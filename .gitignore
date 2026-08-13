@@ -1,0 +1,14 @@
+# dependencies
+node_modules/
+
+# runtime artifacts (auto-recreated)
+output/
+debug/
+
+# logs & screenshots
+*.log
+*.png
+
+# OS
+.DS_Store
+Thumbs.db

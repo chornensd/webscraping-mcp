@@ -1,0 +1,25 @@
+{
+  "name": "webscraping-mcp",
+  "version": "2.2.0",
+  "description": "MCP server exposing a generic Playwright web scraping runtime: scrape any public URL via dynamic extraction schema (scrape_page), structured errors with diagnostics, pagination, dedup, font-obfuscation decoding, robots compliance, SSRF protection, browser profiles and behavior modes.",
+  "main": "src/mcp_server.js",
+  "scripts": {
+    "start": "node src/mcp_server.js",
+    "test": "node tests/run_all.js",
+    "test:unit": "node tests/robots.test.js && node tests/retry.test.js && node tests/security.test.js",
+    "test:smoke": "node tests/mcp_smoke.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "playwright",
+    "web-scraping",
+    "browser-automation"
+  ],
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "playwright": "^1.62.1"
+  }
+}
