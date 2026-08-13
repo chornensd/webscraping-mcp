@@ -32,3 +32,64 @@ npm install          # playwright + MCP SDK（复用系统 Chrome，无需下载
 npm test             # 76 例测试
 node test_mcp.js scrape_page '{"url":"https://books.toscrape.com/","itemSelector":"article.product_pod","fields":{"title":"h3 a","price":".price_color"}}'
 ```
+
+---
+
+# webscraping-mcp (English)
+
+A generic, agent-oriented **Playwright Web Scraping Runtime** — MCP server + self-contained skill. Point it at any public URL with a dynamic extraction schema; no per-site scraper code required.
+
+## Highlights
+
+- **`scrape_page`**: any public URL + dynamic extraction schema — CSS-selector field extraction, list extraction, pagination, deduplication, JSON/CSV output, explicit wait strategy (`waitFor`), behavior modes, profile selection
+- **Structured errors**: `error.type` (15 typed errors) + `diagnostics` (matchedSelectors / screenshot / HTML snapshot / text sample) + `suggestion`, enabling the agent loop: *scrape → failure → read diagnostics → debug_page → fix selector → retry*
+- **Font-obfuscation decoding**: `fontDecode: true` recovers private-use-area characters via canvas render matching (field-tested on Shixiseng: job titles & salaries fully decoded)
+- **Dynamic-list friendly**: extraction reads the DOM via batched `evaluate` calls — no locator auto-wait, so virtual-scrolled / infinite feeds (field-tested on Nowcoder) don't hang
+- **Layered anti-detection**: complete browser profiles (UA + Client Hints + locale + timezone + viewport + platform internally consistent), stealth injection, behavior modes (`none` / `polite` / `human`), robots.txt compliance
+- **Security**: SSRF protection (private networks / localhost / redirect interception), credentials via environment variables (`WEBSCRAPE_USERNAME` / `WEBSCRAPE_PASSWORD`)
+- **Testing**: unit tests (robots / retry / security / paginator) + MCP end-to-end smoke tests — 76 cases, `npm test`
+
+Full documentation (Chinese, incl. field tests against BOSS直聘 / 实习僧 / 牛客网) in [SKILL.md](SKILL.md).
+
+```
+mcp/
+├── mcp_server.js          MCP entry: scrape_page / debug_page / scrape_books / scrape_quotes
+├── src/
+│   ├── browser/           Browser singleton + profile pool + per-task context
+│   ├── runtime/           Scraping engine (scraper/extractor/paginator/wait/retry/diagnostics/font_decoder)
+│   ├── policies/          robots / security (SSRF) / rate_limit / behavior
+│   ├── scrapers/          Example & regression scrapers (books/quotes)
+│   └── utils/             logger / output / stealth / humanize
+└── tests/                 Unit tests + MCP smoke tests
+```
+
+## Quick start
+
+```powershell
+cd mcp
+npm install          # playwright + MCP SDK (reuses system Chrome, no Chromium download)
+npm test             # 76 test cases
+node test_mcp.js scrape_page '{"url":"https://books.toscrape.com/","itemSelector":"article.product_pod","fields":{"title":"h3 a","price":".price_color"}}'
+```
+
+## scrape_page example
+
+```json
+{
+  "url": "https://books.toscrape.com/",
+  "itemSelector": "article.product_pod",
+  "fields": {
+    "title": "h3 a",
+    "price": ".price_color",
+    "href": { "selector": "h3 a", "type": "url", "attribute": "href" },
+    "salary": { "selector": ".day", "fontDecode": true }
+  },
+  "waitFor": { "selector": "article.product_pod", "timeoutMs": 10000 },
+  "pagination": { "nextSelector": "li.next a", "maxPages": 5 },
+  "format": "json"
+}
+```
+
+Result contract (success): `{ success, count, pages, durationMs, file, format, sample, stats: {duplicates, failedPages}, schema }`
+Result contract (failure): `{ success: false, error: {type, message, url, status}, diagnostics, suggestion }`
+
