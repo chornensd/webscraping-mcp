@@ -10,7 +10,7 @@
 - **安全**：SSRF 防护（内网/本机/重定向拦截）、凭据走环境变量（WEBSCRAPE_USERNAME / WEBSCRAPE_PASSWORD）
 - **测试**：robots/retry/security/paginator 单测 + MCP 端到端 smoke（76 例，`npm test`）
 
-完整文档见 [SKILL.md](SKILL.md)（含实测案例：BOSS 直聘 / 实习僧 / 牛客网）。
+完整文档见 [SKILL.md](SKILL.md)。
 
 ```
 mcp/
@@ -49,7 +49,7 @@ A generic, agent-oriented **Playwright Web Scraping Runtime** — MCP server + s
 - **Security**: SSRF protection (private networks / localhost / redirect interception), credentials via environment variables (`WEBSCRAPE_USERNAME` / `WEBSCRAPE_PASSWORD`)
 - **Testing**: unit tests (robots / retry / security / paginator) + MCP end-to-end smoke tests — 76 cases, `npm test`
 
-Full documentation (Chinese, incl. field tests against BOSS直聘 / 实习僧 / 牛客网) in [SKILL.md](SKILL.md).
+Full documentation (Chinese, incl.
 
 ```
 mcp/
