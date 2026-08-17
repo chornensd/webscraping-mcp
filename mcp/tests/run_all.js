@@ -10,6 +10,8 @@ const unitTests = [
   'retry.test.js',
   'security.test.js',
   'paginator.test.js',
+  'proxy.test.js',
+  'metrics.test.js',
 ];
 
 let allPassed = true;

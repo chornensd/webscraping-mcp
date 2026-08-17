@@ -11,7 +11,7 @@
 //   viewport       窗口尺寸（与 platform 常见分辨率匹配）
 //   platform       navigator.platform
 //   secChUa        Client Hints 头（重要！）：CDP 覆盖 UA 后 Chrome 不再自动发
-//                  sec-ch-ua* 头，UA 与 client hints 不一致会被 WAF（如 BOSS 直聘）
+//                  sec-ch-ua* 头，UA 与 client hints 不一致会被 WAF（如国内招聘平台）
 //                  直接拒绝。必须手工补上与 UA 匹配的 client hints。
 //                  Firefox 不发 client hints，所以 firefox profile 不需要此字段。
 

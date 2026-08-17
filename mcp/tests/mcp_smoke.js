@@ -101,7 +101,14 @@ async function main() {
     ok(tools.includes('debug_page'), 'tools/list 包含 debug_page', tools.join(','));
     ok(tools.includes('scrape_books'), 'tools/list 包含 scrape_books', tools.join(','));
     ok(tools.includes('scrape_quotes'), 'tools/list 包含 scrape_quotes', tools.join(','));
-    ok(tools.length === 4, '工具数量为 4', tools.join(','));
+    ok(tools.includes('get_scrape_health'), 'tools/list 包含 get_scrape_health', tools.join(','));
+    ok(tools.length === 5, '工具数量为 5', tools.join(','));
+
+    // ---- get_scrape_health（指标 + 代理池快照）----
+    const health = await client.callTool('get_scrape_health', {});
+    ok(health.success === true, 'get_scrape_health success');
+    ok(typeof health.metrics === 'object' && 'successRate' in health.metrics, 'health.metrics 存在');
+    ok(Array.isArray(health.proxies), 'health.proxies 存在');
 
     // ---- scrape_books（回归）----
     const books = await client.callTool('scrape_books', { maxPages: 1 });

@@ -134,13 +134,14 @@ mcp/
 工具：
 - `scrape_page(url, fields, itemSelector?, waitFor?, pagination?, format?, dedupeKeys?, maxResults?, behavior?, allowEmpty?)`：通用抓取
   - `fields`：`{ 字段名: "selector" | { selector, type: "text"|"attribute"|"html"|"url", attribute?, regex?, regexReplace?, required?, fontDecode? } }`
-  - `fontDecode: true`（或字体名）：**字体反爬解码** — 站点把关键文字（职位名/薪资）渲染成私有区字符 + 动态字体混淆（如实习僧），解码器用 canvas 渲染比对还原真实文本
+  - `fontDecode: true`（或字体名）：**字体反爬解码** — 站点把关键文字（职位名/薪资）渲染成私有区字符 + 动态字体混淆（某中文实习招聘平台实测），解码器用 canvas 渲染比对还原真实文本
   - `waitFor`：`{ selector, state?: "visible"|"attached"|"hidden"|"detached", timeoutMs? }` — 数据就绪判据
   - `pagination`：`{ nextSelector?, maxPages? }`（内置按 dedupeKeys 去重 + 连续 2 页 0 新增自动终止，防动态站重复抓）
   - `behavior`：`"none" | "polite" | "human"`
   - `allowEmpty`：`true` 时 0 条结果算成功（默认报 empty_result）
   - `profile`：浏览器身份，如 `"chrome-win-zh"`（中文站点推荐）；默认随机
-- `debug_page(url, waitMs?)`：分析 DOM 的必经步骤（受 security 策略保护）
+- `debug_page(url, waitMs?)`：分析 DOM 的必经步骤（受 security 策略保护）；返回含 `riskWall` / `emptyResponse` 风控检测字段
+- `get_scrape_health()`：抓取健康快照（指标：请求数/成功率/重试/代理失效 + 代理池状态）
 - `scrape_books(maxPages?, format?)`：示例/回归
 - `scrape_quotes(maxPages?)`：示例/回归（含登录降级）
 
@@ -175,20 +176,20 @@ MCP 模式下日志必须走 stderr，否则污染 JSON-RPC 协议。`logger.js`
 ### 9. 浏览器崩溃自动恢复
 Browser singleton 监听 `disconnected` 事件，Chrome 被杀/更新后自动重置，下一次调用重新启动。任务 context 创建失败也返回结构化错误（不会让 Agent 收到裸 JSON-RPC error）。
 
-### 10. 覆盖 UA 必须同步补 client hints（实测 BOSS 直聘）
-CDP 覆盖 `userAgent` 后，Chrome 不再自动发送 `sec-ch-ua*` client hints。若请求头里 UA 是 Chrome 150 但没有配套的 `sec-ch-ua`，WAF（如 BOSS 直聘）会认为指纹自相矛盾，直接返回 39 字节空壳 `<html><head></head><body></body></html>`。profile 的 `secChUa` 字段会自动补上匹配的头；**不要**手工往 `config.stealth.extraHeaders` 写这些。
+### 10. 覆盖 UA 必须同步补 client hints（实测某国内招聘平台）
+CDP 覆盖 `userAgent` 后，Chrome 不再自动发送 `sec-ch-ua*` client hints。若请求头里 UA 是 Chrome 150 但没有配套的 `sec-ch-ua`，WAF 会认为指纹自相矛盾，直接返回 39 字节空壳 `<html><head></head><body></body></html>`。profile 的 `secChUa` 字段会自动补上匹配的头；**不要**手工往 `config.stealth.extraHeaders` 写这些。
 
-### 11. 不要手工设置 Accept / Connection 头（实测 BOSS 直聘）
+### 11. 不要手工设置 Accept / Connection 头（实测同平台）
 真实 Chrome 走 HTTP/2，从不发送 `Connection: keep-alive`（这是 curl/HTTP/1.1 的痕迹）。手工补 `Accept` / `Accept-Language` / `Connection` 会让 WAF 判定为机器人并弹验证码。v2.1 起 `config.stealth.extraHeaders` 默认 `{}`——让浏览器自己发真实头，只在极特殊场景（如需要特定头）才配置。
 
 ### 12. 中文站点的身份选择
-面向中文站点（BOSS 直聘等）建议在 `scrape_page` 里传 `profile: "chrome-win-zh"`（locale zh-CN + 时区 Asia/Shanghai + 中文语言）。默认 profile 是 en-US，中文 WAF 对英文身份更敏感。若站点要求登录或有验证码（极验 Geetest 等），属于 skill 设计边界（无验证码求解能力）。
+面向中文站点（如国内招聘平台）建议在 `scrape_page` 里传 `profile: "chrome-win-zh"`（locale zh-CN + 时区 Asia/Shanghai + 中文语言）。默认 profile 是 en-US，中文 WAF 对英文身份更敏感。若站点要求登录或有验证码（极验 Geetest 等），属于 skill 设计边界（无验证码求解能力）。
 
-### 13. 字体反爬解码（实测实习僧）
-部分中文站点（实习僧等）把职位名/薪资替换为私有区字符（U+E000-U+F8FF）+ 每次会话动态生成 @font-face 混淆字体。字体文件本身不含映射（cmap 只有 PUA、无 uniXXXX 字形名、码位随机），但**字形轮廓就是真实字符**——`fontDecode: true` 用 canvas 分别渲染 PUA 字符（混淆字体）与参考字符（页面明文 + 数字 + 字母，系统字体），逐像素比对还原。实测全部解码成功（"python开发实习生"、"150/天"）。映射按字体 URL 缓存，翻页字体变化自动重建。
+### 13. 字体反爬解码（实测某中文实习招聘平台）
+部分中文站点把职位名/薪资替换为私有区字符（U+E000-U+F8FF）+ 每次会话动态生成 @font-face 混淆字体。字体文件本身不含映射（cmap 只有 PUA、无 uniXXXX 字形名、码位随机），但**字形轮廓就是真实字符**——`fontDecode: true` 用 canvas 分别渲染 PUA 字符（混淆字体）与参考字符（页面明文 + 数字 + 字母，系统字体），逐像素比对还原。实测全部解码成功（"python开发实习生"、"150/天"）。映射按字体 URL 缓存，翻页字体变化自动重建。
 
-### 14. 提取用 evaluate 批量读 DOM，不要用 locator 逐字段取（实测牛客）
-对无限滚动/虚拟列表/动态重渲染页面（如牛客 feed，Vue 虚拟滚动 + vue-ellipsis 重渲染），locator 的 auto-wait 会因元素持续抖动永远等不到"稳定"，`innerText`/`getAttribute` 逐个 8s 超时，18 张卡片能卡 2 分钟+。v2.2 起 extractor 改为 `locator.evaluate` 批量读 DOM（一次 CDP 往返取完整卡片，无 auto-wait），动态页面 2 秒提取 18 卡。注意：传给 `page.evaluate` 的函数必须自包含（闭包引用会在序列化后丢失，报 `xxx is not defined`）；元素注入用 `$eval`/`locator.evaluate`（元素自动作为第一参数）。
+### 14. 提取用 evaluate 批量读 DOM，不要用 locator 逐字段取（实测某中文求职社区）
+对无限滚动/虚拟列表/动态重渲染页面（Vue 虚拟滚动 + 重渲染），locator 的 auto-wait 会因元素持续抖动永远等不到"稳定"，`innerText`/`getAttribute` 逐个 8s 超时，18 张卡片能卡 2 分钟+。v2.2 起 extractor 改为 `locator.evaluate` 批量读 DOM（一次 CDP 往返取完整卡片，无 auto-wait），动态页面 2 秒提取 18 卡。注意：传给 `page.evaluate` 的函数必须自包含（闭包引用会在序列化后丢失，报 `xxx is not defined`）；元素注入用 `$eval`/`locator.evaluate`（元素自动作为第一参数）。
 
 ## 反爬分层（按需组合，不是全上）
 
@@ -197,10 +198,13 @@ CDP 覆盖 `userAgent` 后，Chrome 不再自动发送 `sec-ch-ua*` client hints
 | 请求层 | browser/profiles.js | 完整 browser profile（UA/locale/timezone/languages/viewport/platform + sec-ch-ua client hints 内部一致） | 基础伪装（client hints 不一致会被 WAF 拒） |
 | 特征层 | utils/stealth.js | webdriver/chrome/plugins/languages/permissions/platform 注入 | 被特征检测时 |
 | 行为层 | policies/behavior.js | `mode: none/polite/human`（mouse/scroll/delay 只在 human 开） | 被行为分析时 |
+| 频率层 | policies/rate_limit.js | polite/human 模式按域名最小请求间隔 | 高频抓取时 |
+| 网络层 | policies/proxy.js | 代理池：轮询分配、失败剔除（重启单例换代理）、冷却恢复、全挂降级直连；`PROXY_LIST` 开启 | IP 被封/风控时 |
 | 内容层 | runtime/font_decoder.js | 字体反爬解码（canvas 渲染比对还原私有区字符） | 职位名/薪资被动态字体混淆时 |
 | 合规层 | policies/robots.js | robots.txt 检查（多 UA 组/最长匹配/Allow 优先） | 始终开启 |
 | 安全层 | policies/security.js | SSRF 防护（内网/本机/协议白名单，含重定向拦截） | 始终开启 |
-| 未实现 | — | 代理 IP、验证码（极验 Geetest 等）、WebGL/canvas 深度指纹 | 需要外部资源，按设计排除 |
+| 可观测 | utils/metrics.js | 指标（请求数/成功率/重试/代理失效）+ `get_scrape_health` 工具 | 排障/监控 |
+| 未实现 | — | 验证码（极验 Geetest 等）、WebGL/canvas 深度指纹 | 需要外部资源，按设计排除 |
 
 验证反爬是否生效：`node test_mcp.js debug_page '{"url":"<target>","waitMs":3000}'`，看指纹检测输出（`webdriver` 应为 `undefined`）。
 
@@ -213,21 +217,35 @@ node tests/run_all.js
 # retry.test.js（6 例）：transient 识别/重试到成功/不重试确定错误/耗尽抛错/jitter 范围
 # security.test.js（10 例）：私有 IP 判定/localhost/内网/IPv6/file:///白名单/请求级拦截
 # paginator.test.js（5 例）：整条去重/按键去重/多键去重/undefined 键
-# mcp_smoke.js（44 例）：tools/list/scrape_books/scrape_quotes/debug_page/
-#   scrape_page 成功（分页+去重+url 解析+单条记录）/失败（结构化错误+diagnostics）/
-#   CSV/dedupeKeys/behavior=polite/allowEmpty/安全拦截
+# proxy.test.js（9 例）：轮询分配/失败剔除/冷却恢复/全挂降级/URL 解析（含认证）
+# metrics.test.js（5 例）：累加/成功率/未知键忽略/reset/耗时基准
+# mcp_smoke.js（48 例）：tools/list/scrape_books/scrape_quotes/debug_page/
+#   get_scrape_health/scrape_page 成功（分页+去重+url 解析+单条记录）/
+#   失败（结构化错误+diagnostics）/CSV/dedupeKeys/behavior=polite/allowEmpty/安全拦截
 ```
 
 ## 已知限制
 
 - 目标为公开练习站，登录用演示凭据（可用环境变量覆盖）；真实站点需配置自己的凭据
-- 无代理/验证码能力，仅覆盖常规反爬强度
+- 代理池需自备代理（env `PROXY_LIST`）；无验证码求解能力，仅覆盖常规反爬强度
 - 不绕过 robots.txt；403/429/验证码类站点需要真人操作或外部资源
-- 实测案例（BOSS 直聘 www.zhipin.com）：修复 UA 与 client hints 不一致 + 移除手工
+- 实测案例（国内招聘平台）：修复 UA 与 client hints 不一致 + 移除手工
   Accept/Connection 头后请求可通过 WAF；但同 IP 高频访问会被标记风险并强制极验
   Geetest 点击验证（`geetest_radar_btn`），属于验证码边界，需人工/外部验证服务
-- 实测案例（实习僧 www.shixiseng.com）：无需 WAF 对抗即可访问，职位名/薪资用字体
+- 实测案例（中文实习招聘平台）：无需 WAF 对抗即可访问，职位名/薪资用字体
   反爬混淆，`fontDecode: true` 可完整还原；翻页选择器随站点改版可能变化
-- 实测案例（牛客网 www.nowcoder.com/discuss）：无 WAF，Tailwind 无语义类名，
-  卡片根用 `div:has(> .feed-text)`；feed 为 Vue 虚拟列表（locator 提取会超时，
+- 实测案例（中文求职社区）：无 WAF，无语义类名，
+  卡片根需按实际 DOM 结构选；feed 为虚拟列表（locator 提取会超时，
   已通过 evaluate 批量提取解决）；列表混有广告卡（字段为 null 属正常）
+
+## 真实网站测试（2026-08 追加）
+
+本项目的 stealth / 代理池 / 限流 / 风控检测在多个**真实生产网站**（国际 + 国内，覆盖不同反爬强度）上验证过，
+目标站名按约定不在文档中写明。验证结论：
+
+- 中等反爬站点（代码托管平台、视频平台、求职社区）：stealth 全部通过，无验证墙，
+  结构化抓取全链路正常（SPA 异步渲染、滚动触发加载均可用）
+- 国内影评平台：IP 级封禁（无 cookie 会话返回 403 / 「访问异常」验证页），与 stealth 无关
+- 国内招聘平台：无 cookie 会话返回空文档（39 字节）或验证墙（iframe 渲染），需代理或人工验证
+- 国内实习招聘平台：服务端对无痕会话不下发列表数据（API 带动态签名前缀），另有字体反爬
+- `debug_page` 的 `riskWall` / `emptyResponse` 字段即为此设计：先判 IP/会话层风控，再查选择器

@@ -2,6 +2,7 @@
 // 应用完整 browser profile（UA/locale/timezone/languages/viewport/platform）+ stealth。
 const config = require('../config');
 const logger = require('../utils/logger');
+const metrics = require('../utils/metrics');
 const { applyStealth } = require('../utils/stealth');
 const { resolveProfile } = require('./profiles');
 const { installPrivateNetworkGuard } = require('../policies/security');
@@ -23,7 +24,7 @@ async function createTaskContext(browser, options = {}) {
     extraHTTPHeaders: {
       ...config.stealth.extraHeaders,
       // 关键：CDP 覆盖 UA 后 Chrome 不再自动发 client hints（sec-ch-ua*），
-      // 与 UA 不一致会被 WAF 拒绝（如 BOSS 直聘返回空壳）。手工补上匹配的头。
+      // 与 UA 不一致会被 WAF 拒绝（如国内招聘平台返回空壳）。手工补上匹配的头。
       ...(profile.secChUa || {}),
     },
   });
@@ -40,6 +41,13 @@ async function createTaskContext(browser, options = {}) {
   page.on('requestfailed', (req) =>
     logger.warn('请求失败', { url: req.url(), error: req.failure()?.errorText })
   );
+  // 指标埋点：每个文档请求记一次，成功/失败分别计数
+  page.on('response', (res) => {
+    if (res.request().resourceType() === 'document') {
+      metrics.inc('requests');
+      if (res.status() >= 400) metrics.inc('requestsFailed');
+    }
+  });
 
   logger.info('任务 context 已创建', { profile: profile.name });
   return { context, page, profile };

@@ -14,7 +14,7 @@
 //       required 缺失即整条记录失败；fontDecode 过字体反爬解码。
 //
 // v2.2：提取改为 page.evaluate 批量读 DOM（无 locator auto-wait）。
-// 原因：对无限滚动/虚拟列表/动态重渲染页面（如牛客 feed），locator 的
+// 原因：对无限滚动/虚拟列表/动态重渲染页面（如某中文求职社区 feed），locator 的
 // auto-wait 会因元素持续抖动而永远等不到"稳定"，导致 innerText 超时。
 // evaluate 直接读 DOM，一次 CDP 往返完成整卡提取，快且稳定。
 const { ScrapeError } = require('./errors');

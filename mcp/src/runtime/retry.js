@@ -3,6 +3,7 @@
 // 不重试：selector_not_found / 401 / 403 / 404 / robots_denied / schema 错误 / 编程错误
 const config = require('../config');
 const logger = require('../utils/logger');
+const metrics = require('../utils/metrics');
 const { ScrapeError } = require('./errors');
 
 const TRANSIENT_TYPES = new Set([
@@ -60,6 +61,7 @@ async function withRetry(
     } catch (err) {
       lastError = err;
       if (attempt === retries || !shouldRetry(err)) break;
+      metrics.inc('retries');
       const base = Math.min(maxDelayMs, baseDelayMs * 2 ** (attempt - 1));
       const spread = base * jitter;
       const delay = Math.max(0, Math.round(base - spread + Math.random() * 2 * spread));

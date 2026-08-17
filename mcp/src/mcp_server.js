@@ -5,6 +5,7 @@
 //   scrape_page  通用抓取：任意 URL + 动态 extraction schema（核心能力）
 //   debug_page   调试任意 URL（DOM 分析 -> 生成 schema 的必经步骤）
 //   scrape_books / scrape_quotes  示例/回归抓取器（兼容保留）
+//   get_scrape_health  健康快照（指标 + 代理池状态）
 //
 // 统一数据契约：
 //   成功：{ success, count, pages, durationMs, file, format, sample, stats, schema }
@@ -26,7 +27,8 @@ const { z } = require('zod');
 
 const config = require('./config');
 const logger = require('./utils/logger');
-const { getBrowser } = require('./browser/browser_manager');
+const metrics = require('./utils/metrics');
+const { getBrowser, reportProxyResult, proxyPool } = require('./browser/browser_manager');
 const { createTaskContext, closeTaskContext } = require('./browser/context');
 const { resolveProfile } = require('./browser/profiles');
 const { scrapeBooks } = require('./scrapers/books');
@@ -41,7 +43,7 @@ const path = require('path');
 
 const server = new McpServer({
   name: 'webscraping',
-  version: '2.0.0',
+  version: '2.3.0',
 });
 
 /**
@@ -57,8 +59,9 @@ const server = new McpServer({
 async function runTask(selectors, fn, options = {}) {
   let context = null;
   let page = null;
+  let browser = null;
   try {
-    const browser = await getBrowser();
+    browser = await getBrowser();
     const profile = options.profile ? resolveProfile(options.profile) : undefined;
     ({ context, page } = await createTaskContext(browser, { profile }));
   } catch (err) {
@@ -72,11 +75,18 @@ async function runTask(selectors, fn, options = {}) {
       diagnostics: {},
       suggestion:
         'Check that Chrome is installed and the configured channel is available, then retry.',
+      metrics: metrics.snapshot(),
     };
   }
   try {
-    return await fn(page);
+    const result = await fn(page);
+    // 任务成功：代理清零失败计数；抓取条数计入指标
+    reportProxyResult(browser, true);
+    if (result && typeof result.count === 'number') metrics.inc('records', result.count);
+    return { ...result, metrics: metrics.snapshot() };
   } catch (err) {
+    // 任务失败：代理累计失败（达阈值剔除并重启单例换代理）
+    reportProxyResult(browser, false);
     const error =
       err instanceof ScrapeError
         ? err
@@ -90,6 +100,7 @@ async function runTask(selectors, fn, options = {}) {
       error: error.toJSON(),
       diagnostics,
       suggestion: suggestionFor(error.type),
+      metrics: metrics.snapshot(),
     };
   } finally {
     await closeTaskContext({ context });
@@ -154,7 +165,7 @@ server.tool(
               fontDecode: z
                 .union([z.boolean(), z.string()])
                 .optional()
-                .describe('字体反爬解码：true=自动检测反爬字体，字符串=指定字体名（如实习僧职位名/薪资）'),
+                .describe('字体反爬解码：true=自动检测反爬字体，字符串=指定字体名（如中文招聘平台职位名/薪资）'),
             })
             .describe('字段详情对象'),
         ])
@@ -278,6 +289,30 @@ server.tool(
       { profile }
     );
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  }
+);
+
+server.tool(
+  'get_scrape_health',
+  '抓取健康度：累计请求数/成功率/重试/代理失效与代理池状态（含失效剔除与冷却）。用于排障与监控。',
+  {},
+  async () => {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(
+            {
+              success: true,
+              metrics: metrics.snapshot(),
+              proxies: proxyPool.snapshot(),
+            },
+            null,
+            2
+          ),
+        },
+      ],
+    };
   }
 );
 

@@ -13,11 +13,23 @@ module.exports = {
     headless: true,
     // 复用系统已安装的浏览器，无需下载 Playwright Chromium
     // 可选值：'chromium'（需 npx playwright install）| 'chrome' | 'msedge'
-    channel: 'chrome',
+    // 容器内（Docker 镜像自带 chromium）用环境变量 SCRAPING_CHANNEL=chromium 覆盖
+    channel: process.env.SCRAPING_CHANNEL || 'chrome',
     // 浏览器常驻（browser singleton）：首次调用启动，server 退出时统一关闭
     singleton: true,
     // 去掉自动化标志，配合 stealth 隐藏 webdriver 特征
     launchArgs: ['--disable-blink-features=AutomationControlled'],
+  },
+
+  proxy: {
+    // 代理池。可用环境变量 PROXY_LIST 覆盖（逗号分隔，scheme://user:pass@host:port），
+    // 也可直接在这里写数组。未配置时全部直连，行为与无代理版本一致。
+    // 详见 policies/proxy.js
+    list: [],
+    // 连续失败多少次后剔除该代理进入冷却期
+    maxFailures: Number(process.env.SCRAPING_PROXY_MAX_FAILURES) || 3,
+    // 冷却时长（毫秒），到期自动恢复
+    coolDownMs: Number(process.env.SCRAPING_PROXY_COOLDOWN_MS) || 60_000,
   },
 
   navigation: {
@@ -58,7 +70,7 @@ module.exports = {
     // 见 browser/profiles.js。每次 context 取一个完整 profile，不再只随机 UA。
     profile: 'random',
     // 额外请求头：默认留空，让浏览器自己发真实头。
-    // 实测（BOSS 直聘 WAF）：手工加 Connection: keep-alive 或自定义 Accept 会触发
+    // 实测（国内招聘平台 WAF）：手工加 Connection: keep-alive 或自定义 Accept 会触发
     // 验证码/空壳响应 —— 真实 Chrome 走 HTTP/2 从不发 Connection 头。
     // 与 UA 配套的 client hints（sec-ch-ua*）由 profile.secChUa 自动补全，不要写在这里。
     extraHeaders: {},
