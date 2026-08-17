@@ -102,13 +102,31 @@ async function main() {
     ok(tools.includes('scrape_books'), 'tools/list 包含 scrape_books', tools.join(','));
     ok(tools.includes('scrape_quotes'), 'tools/list 包含 scrape_quotes', tools.join(','));
     ok(tools.includes('get_scrape_health'), 'tools/list 包含 get_scrape_health', tools.join(','));
-    ok(tools.length === 5, '工具数量为 5', tools.join(','));
+    ok(tools.includes('suggest_selectors'), 'tools/list 包含 suggest_selectors', tools.join(','));
+    ok(tools.length === 6, '工具数量为 6', tools.join(','));
 
     // ---- get_scrape_health（指标 + 代理池快照）----
     const health = await client.callTool('get_scrape_health', {});
     ok(health.success === true, 'get_scrape_health success');
     ok(typeof health.metrics === 'object' && 'successRate' in health.metrics, 'health.metrics 存在');
     ok(Array.isArray(health.proxies), 'health.proxies 存在');
+
+    // ---- suggest_selectors（选择器推荐）----
+    const suggest = await client.callTool('suggest_selectors', {
+      url: 'https://books.toscrape.com/',
+      waitForSelector: 'article.product_pod',
+    });
+    ok(suggest.success === true, 'suggest_selectors success');
+    ok(Array.isArray(suggest.suggestions), 'suggestions 数组存在');
+    const top = suggest.suggestions.find((s) => s.selector === 'article');
+    ok(top && top.count > 0, 'article 候选应匹配书籍卡片', JSON.stringify(top));
+    // 返回按匹配数降序
+    for (let i = 1; i < suggest.suggestions.length; i += 1) {
+      ok(
+        suggest.suggestions[i - 1].count >= suggest.suggestions[i].count,
+        '建议按匹配数降序'
+      );
+    }
 
     // ---- scrape_books（回归）----
     const books = await client.callTool('scrape_books', { maxPages: 1 });

@@ -12,6 +12,8 @@ const unitTests = [
   'paginator.test.js',
   'proxy.test.js',
   'metrics.test.js',
+  'errors.test.js',
+  'logger.test.js',
 ];
 
 let allPassed = true;

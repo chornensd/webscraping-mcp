@@ -73,6 +73,27 @@ tests.push(['allowedDomains 白名单', async () => {
   await assert.rejects(validateUrl('https://example.org/a', opts));
 }]);
 
+tests.push(['blockedDomains 黑名单（与白名单组合）', async () => {
+  // 组合：域名过白名单后再命中黑名单（自身或子域）才拦截
+  const opts = { allowedDomains: ['example.com'], blockedDomains: ['internal.example.com'] };
+  await validateUrl('https://example.com/a', opts);
+  await validateUrl('https://sub.example.com/a', opts);
+  // internal.example.com 过白名单（.example.com 子域）→ 命中黑名单
+  await assert.rejects(validateUrl('https://internal.example.com/secret', opts), /黑名单/);
+  // 黑名单子域同样拦截
+  await assert.rejects(validateUrl('https://api.internal.example.com/x', opts), /黑名单/);
+  // 请求级拦截同样生效（传同一组黑名单）
+  assert.ok(isBlockedRequestUrl('https://internal.example.com/', { blockedDomains: ['internal.example.com'] }));
+  assert.ok(!isBlockedRequestUrl('https://sub.example.com/', { blockedDomains: ['internal.example.com'] }));
+}]);
+
+tests.push(['blockedDomains 黑名单（无白名单时独立生效）', async () => {
+  const opts = { blockedDomains: ['metadata', 'internal'] };
+  await validateUrl('https://public.example.org/a', opts);
+  await assert.rejects(validateUrl('https://a.metadata/x', opts), /黑名单/);
+  await assert.rejects(validateUrl('https://svc.internal/x', opts), /黑名单/);
+}]);
+
 tests.push(['请求级拦截：重定向/子请求打内网也能拦', () => {
   // 公网页重定向到内网（SSRF 主路径）—— validateUrl 拦不到，route 层必须拦
   assert.ok(isBlockedRequestUrl('http://127.0.0.1:8080/'));

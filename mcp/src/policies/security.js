@@ -54,15 +54,26 @@ function matchesAllowedDomains(hostname, allowedDomains) {
   });
 }
 
+/** hostname 是否命中黑名单（自身或子域名），如 metadata 端点、内部服务域名 */
+function matchesBlockedDomains(hostname, blockedDomains) {
+  if (!blockedDomains || blockedDomains.length === 0) return false;
+  const host = hostname.toLowerCase();
+  return blockedDomains.some((domain) => {
+    const d = String(domain).toLowerCase().replace(/^\./, '');
+    return host === d || host.endsWith(`.${d}`);
+  });
+}
+
 /**
  * 校验目标 URL 是否可以访问。
- * 通过：http/https 协议、非内网地址、匹配 allowedDomains（如配置）。
+ * 通过：http/https 协议、非内网地址、匹配 allowedDomains（如配置）、未命中 blockedDomains。
  * @param {string} rawUrl
- * @param {{ allowPrivateNetworks?: boolean, allowedDomains?: string[] }} [options]
+ * @param {{ allowPrivateNetworks?: boolean, allowedDomains?: string[], blockedDomains?: string[] }} [options]
  * @returns {Promise<void>} 不通过时抛 ScrapeError('security_denied')
  */
 async function validateUrl(rawUrl, options = {}) {  const allowPrivate = options.allowPrivateNetworks ?? config.security.allowPrivateNetworks;
   const allowedDomains = options.allowedDomains ?? config.security.allowedDomains;
+  const blockedDomains = options.blockedDomains ?? config.security.blockedDomains;
 
   let parsed;
   try {
@@ -85,6 +96,14 @@ async function validateUrl(rawUrl, options = {}) {  const allowPrivate = options
     throw new ScrapeError(
       'security_denied',
       `域名 ${hostname} 不在 allowedDomains 白名单内`,
+      { url: rawUrl }
+    );
+  }
+
+  if (matchesBlockedDomains(hostname, blockedDomains)) {
+    throw new ScrapeError(
+      'security_denied',
+      `域名 ${hostname} 命中 blockedDomains 黑名单`,
       { url: rawUrl }
     );
   }
@@ -136,12 +155,14 @@ async function validateUrl(rawUrl, options = {}) {  const allowPrivate = options
 
 /**
  * 请求级快速拦截判定（不解析 DNS，只做字符串级检查，供 route 层实时拦截用）。
- * 覆盖：非 http/https 协议、本机/内网 IP 字面量、被阻止主机名。
+ * 覆盖：非 http/https 协议、本机/内网 IP 字面量、被阻止主机名、黑名单域名。
  * 域名解析到内网的场景由 validateUrl 在初始 URL 上做完整 DNS 检查兜底。
  * @param {string} rawUrl
+ * @param {{ blockedDomains?: string[] }} [options] 缺省读全局 config.security
  * @returns {boolean} true = 应拦截
  */
-function isBlockedRequestUrl(rawUrl) {
+function isBlockedRequestUrl(rawUrl, options = {}) {
+  const blockedDomains = options.blockedDomains ?? config.security.blockedDomains;
   let parsed;
   try {
     parsed = new URL(rawUrl);
@@ -151,6 +172,7 @@ function isBlockedRequestUrl(rawUrl) {
   if (!['http:', 'https:'].includes(parsed.protocol)) return true;
   const hostname = parsed.hostname.toLowerCase();
   if (BLOCKED_HOSTNAMES.has(hostname)) return true;
+  if (matchesBlockedDomains(hostname, blockedDomains)) return true;
   const rawHost = hostname.replace(/^\[|\]$/g, '');
   const isIPLiteral = /^\d{1,3}(\.\d{1,3}){3}$/.test(rawHost) || rawHost.includes(':');
   if (isIPLiteral && isPrivateAddress(rawHost)) return true;
@@ -168,9 +190,10 @@ function isBlockedRequestUrl(rawUrl) {
 function installPrivateNetworkGuard(context, options = {}) {
   const allowPrivate = options.allowPrivateNetworks ?? config.security.allowPrivateNetworks;
   if (allowPrivate) return context;
+  const blockedDomains = options.blockedDomains ?? config.security.blockedDomains;
   context.route('**/*', (route) => {
     const url = route.request().url();
-    if (isBlockedRequestUrl(url)) {
+    if (isBlockedRequestUrl(url, { blockedDomains })) {
       logger.warn('已拦截内网/本机请求', { url });
       route.abort('blockedbyclient').catch(() => {});
     } else {
@@ -187,6 +210,7 @@ module.exports = {
   isPrivateIPv6,
   isPrivateAddress,
   matchesAllowedDomains,
+  matchesBlockedDomains,
   isBlockedRequestUrl,
   installPrivateNetworkGuard,
 };

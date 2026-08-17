@@ -39,12 +39,25 @@ const { collectDiagnostics } = require('./runtime/diagnostics');
 const { checkRobots } = require('./policies/robots');
 const { navigate } = require('./runtime/wait');
 const { saveJSON, saveCSV } = require('./utils/output');
+const { startMetricsServer } = require('./utils/metrics_http');
 const path = require('path');
 
 const server = new McpServer({
   name: 'webscraping',
   version: '2.3.0',
 });
+
+/**
+ * 工具注册器：支持最小权限配置（config.tools.disabled / SCRAPING_DISABLE_TOOLS）。
+ * 禁用的工具不注册到 MCP，客户端 tools/list 不可见。
+ */
+function registerTool(name, description, schema, handler) {
+  if (config.tools.disabled.includes(name)) {
+    logger.info(`工具 ${name} 已按配置禁用（SCRAPING_DISABLE_TOOLS）`);
+    return;
+  }
+  server.tool(name, description, schema, handler);
+}
 
 /**
  * 统一执行入口：任务级 context + 结构化结果/错误。
@@ -140,7 +153,7 @@ function buildResult(records, filePath, extra = {}) {
   };
 }
 
-server.tool(
+registerTool(
   'scrape_page',
   '通用网页抓取：对任意公开 URL 动态定义 extraction schema（CSS selector），支持字段提取、列表提取、分页、去重、JSON/CSV 输出与显式等待策略。返回结构化结果或结构化错误（error.type + diagnostics + suggestion）。',
   {
@@ -208,7 +221,7 @@ server.tool(
   }
 );
 
-server.tool(
+registerTool(
   'scrape_books',
   '抓取 books.toscrape.com 的书籍列表（分页、去重），支持 CSV/JSON 输出。返回统一数据契约。',
   {
@@ -243,7 +256,7 @@ server.tool(
   }
 );
 
-server.tool(
+registerTool(
   'scrape_quotes',
   '抓取 quotes.toscrape.com 的引文（含登录流程，失败自动降级匿名）。返回统一数据契约。',
   {
@@ -270,7 +283,7 @@ server.tool(
   }
 );
 
-server.tool(
+registerTool(
   'debug_page',
   '调试任意 URL：打开页面、收集 JS/网络错误、检测指纹（验证 stealth）、保存截图与文本快照。返回指纹与错误清单。抓取失败后用它分析 DOM 以调整选择器。',
   {
@@ -292,7 +305,7 @@ server.tool(
   }
 );
 
-server.tool(
+registerTool(
   'get_scrape_health',
   '抓取健康度：累计请求数/成功率/重试/代理失效与代理池状态（含失效剔除与冷却）。用于排障与监控。',
   {},
@@ -316,8 +329,49 @@ server.tool(
   }
 );
 
+registerTool(
+  'suggest_selectors',
+  '选择器推荐：打开目标 URL，对候选选择器（可自定义）统计匹配数与样本文本，按匹配数排序返回。用于生成/修正 extraction schema 的 itemSelector——把猜测式开发变成启发式推荐。',
+  {
+    url: z.string().url().describe('目标 URL（http/https，受 security 策略保护）'),
+    candidates: z
+      .array(z.string())
+      .optional()
+      .describe('候选选择器列表；缺省使用内置常见列表容器候选池'),
+    waitForSelector: z.string().optional().describe('数据就绪判据：先等待该选择器出现再统计'),
+    waitMs: z.number().int().min(0).max(30000).optional().describe('导航后的固定等待毫秒数'),
+    profile: z
+      .enum(['chrome-win', 'chrome-mac', 'edge-win', 'firefox-win', 'chrome-win-zh'])
+      .optional()
+      .describe('浏览器身份 profile；中文站点推荐 chrome-win-zh'),
+  },
+  async ({ url, candidates, waitForSelector, waitMs, profile }) => {
+    const { suggestSelectors } = require('./runtime/suggest');
+    const result = await runTask(
+      candidates || [],
+      async (page) => {
+        if (waitMs) await page.waitForTimeout(waitMs);
+        const suggestions = await suggestSelectors(page, url, {
+          candidates,
+          waitForSelector,
+        });
+        return {
+          success: true,
+          url,
+          count: suggestions.length,
+          suggestions,
+        };
+      },
+      { profile }
+    );
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  }
+);
+
 // 启动 stdio 传输
 async function main() {
+  // 可选：Prometheus 指标端点（SCRAPING_METRICS_PORT 设置时启动）
+  startMetricsServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
   logger.info('webscraping MCP server v2 已启动（stdio）');

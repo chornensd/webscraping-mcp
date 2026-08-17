@@ -84,10 +84,33 @@ module.exports = {
 
   security: {
     // URL/SSRF 防护：默认阻止本机与内网地址，除非显式开启
-    // 至少阻止：localhost / 127.x / ::1 / 10.0.0.0/8 / 172.16.0.0/12 / 192.168.0.0/16 / file://
+    // 至少阻止：localhost / 127.x / ::1 / 10.0.0.0/8 / 172.16.0.0/12 / 192.168.0.0/16 /
+    //   169.254.0.0/16（含云元数据端点 169.254.169.254）/ file://
     allowPrivateNetworks: false,
-    // 非空时只允许这些域名（及子域名）被访问
+    // 非空时只允许这些域名（及子域名）被访问（白名单）
     allowedDomains: [],
+    // 黑名单：命中即拦截（自身或子域名），优先级高于白名单。
+    // 常用场景：屏蔽内部服务域名、云元数据主机名。可用环境变量
+    // SCRAPING_BLOCKED_DOMAINS 覆盖（逗号分隔）。
+    blockedDomains: (process.env.SCRAPING_BLOCKED_DOMAINS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  },
+
+  tools: {
+    // 工具权限开关：禁用的工具不注册到 MCP（最小权限原则）。
+    // 环境变量 SCRAPING_DISABLE_TOOLS=debug_page,suggest_selectors 覆盖。
+    disabled: (process.env.SCRAPING_DISABLE_TOOLS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  },
+
+  metrics: {
+    // 可选 Prometheus 指标端点：设置 SCRAPING_METRICS_PORT 后启动内置 HTTP server，
+    // 输出 Prometheus 文本格式（GET /metrics）+ 健康检查（GET /healthz），零依赖。
+    port: Number(process.env.SCRAPING_METRICS_PORT) || 0,
   },
 
   targets: {

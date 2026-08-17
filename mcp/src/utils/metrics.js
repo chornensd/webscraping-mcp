@@ -50,9 +50,35 @@ function createMetrics() {
     });
   }
 
-  return { inc, snapshot, reset, logSummary };
+  return { inc, snapshot, reset, logSummary, prometheusText };
+}
+
+/** 输出 Prometheus 文本格式（供 SCRAPING_METRICS_PORT HTTP 端点使用） */
+function prometheusText(snap) {
+  const lines = [
+    '# HELP webscraping_requests_total 文档请求总数',
+    '# TYPE webscraping_requests_total counter',
+    `webscraping_requests_total ${snap.requests}`,
+    '# HELP webscraping_requests_failed_total 失败文档请求数（HTTP >= 400）',
+    '# TYPE webscraping_requests_failed_total counter',
+    `webscraping_requests_failed_total ${snap.requestsFailed}`,
+    '# HELP webscraping_retries_total 重试次数',
+    '# TYPE webscraping_retries_total counter',
+    `webscraping_retries_total ${snap.retries}`,
+    '# HELP webscraping_records_total 抓取记录数',
+    '# TYPE webscraping_records_total counter',
+    `webscraping_records_total ${snap.records}`,
+    '# HELP webscraping_proxy_failures_total 代理失败次数',
+    '# TYPE webscraping_proxy_failures_total counter',
+    `webscraping_proxy_failures_total ${snap.proxyFailures}`,
+    '# HELP webscraping_success_rate 请求成功率（0-1，无请求时 -1）',
+    '# TYPE webscraping_success_rate gauge',
+    `webscraping_success_rate ${snap.successRate === null ? -1 : snap.successRate}`,
+  ];
+  return lines.join('\n') + '\n';
 }
 
 /** 全局单例：MCP 长驻进程跨请求累计 */
 module.exports = createMetrics();
 module.exports.createMetrics = createMetrics;
+module.exports.prometheusText = prometheusText;

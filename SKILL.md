@@ -142,6 +142,7 @@ mcp/
   - `profile`：浏览器身份，如 `"chrome-win-zh"`（中文站点推荐）；默认随机
 - `debug_page(url, waitMs?)`：分析 DOM 的必经步骤（受 security 策略保护）；返回含 `riskWall` / `emptyResponse` 风控检测字段
 - `get_scrape_health()`：抓取健康快照（指标：请求数/成功率/重试/代理失效 + 代理池状态）
+- `suggest_selectors(url, candidates?, waitForSelector?)`：选择器推荐——统计候选选择器匹配数与样本文本（按匹配数降序），生成/修正 itemSelector 前先探测 DOM
 - `scrape_books(maxPages?, format?)`：示例/回归
 - `scrape_quotes(maxPages?)`：示例/回归（含登录降级）
 
@@ -207,6 +208,22 @@ CDP 覆盖 `userAgent` 后，Chrome 不再自动发送 `sec-ch-ua*` client hints
 | 未实现 | — | 验证码（极验 Geetest 等）、WebGL/canvas 深度指纹 | 需要外部资源，按设计排除 |
 
 验证反爬是否生效：`node test_mcp.js debug_page '{"url":"<target>","waitMs":3000}'`，看指纹检测输出（`webdriver` 应为 `undefined`）。
+
+## 环境变量速查
+
+| 变量 | 作用 |
+|------|------|
+| `PROXY_LIST` | 代理池（逗号分隔 `scheme://user:pass@host:port`），空=直连 |
+| `SCRAPING_BLOCKED_DOMAINS` | 域名黑名单（逗号分隔，命中即拦，子域通配） |
+| `SCRAPING_DISABLE_TOOLS` | 禁用的 MCP 工具（逗号分隔，最小权限） |
+| `SCRAPING_METRICS_PORT` | Prometheus 指标端点端口（0=关闭，仅 127.0.0.1） |
+| `SCRAPING_CHANNEL` | 浏览器渠道（容器内 chromium） |
+| `SCRAPING_PROXY_MAX_FAILURES` / `SCRAPING_PROXY_COOLDOWN_MS` | 代理剔除阈值 / 冷却时长 |
+| `WEBSCRAPE_USERNAME` / `WEBSCRAPE_PASSWORD` | 登录凭据 |
+| `LOG_TO_STDERR=1` | MCP 模式必须（stdout 纯净） |
+| `LOG_FORMAT=json` | JSON 日志行（可接入日志系统） |
+
+完整错误码表见 README.md#error-codes（失败响应含 `code`/`type`/`docUrl`/`suggestion`，Agent 按 code 程序化处理）。
 
 ## 测试
 
